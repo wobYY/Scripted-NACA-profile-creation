@@ -1,3 +1,9 @@
+# Ignore .csv files in the /profiles/ directory
+/profiles/naca*.*
+
+# Ignore notebook files
+*.ipynb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
