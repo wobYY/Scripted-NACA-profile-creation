@@ -1,6 +1,16 @@
 import os
+import sys
 import pandas as pd
 
+# Setup the FreeCAD import
+# It's possible to do both on Windows and Linux
+# But it's easier to do it on Linux
+# Docs: https://wiki.freecad.org/Embedding_FreeCAD
+freecad_path = "/usr/lib/freecad-python3/lib"
+sys.path.append(freecad_path)
+import FreeCAD # Import FreeCAD after adding the path
+
+# Function to draw the profile from the csv
 def draw_from_csv_coordinates(coordinates, **kwargs):
     
     return
