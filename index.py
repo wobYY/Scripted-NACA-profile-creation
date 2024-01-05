@@ -51,8 +51,7 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     document.recompute()
     log.debug("Body name set to: %s", body_name)
 
-    # For the Body add a sketch in the YZ plane
-    log.debug("Adding a sketch in the YZ plane")
+    # For the Body add a sketch in teh YZ plane
     document.getObject("Body").newObject("Sketcher::SketchObject", "Sketch")
     document.getObject("Sketch").Support = (
         document.getObject("YZ_Plane"),
@@ -60,77 +59,48 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     )
     document.getObject("Sketch").MapMode = "FlatFace"
     document.recompute()
-    log.debug("Sketch added in the YZ plane")
 
-    # Get the x and y coordinates from the first row of the dataframe
-    log.debug("Preparing to draw a B-Spline")
-    num_of_coordinates = len(coordinates["x"])
-    document.getObject("Sketch").addGeometry(
-        Part.Circle(
-            App.Vector(float(coordinates["x"][0]), float(coordinates["y"][0]), 0),
-            App.Vector(0, 0, 1),
-            10,
-        ),
-        True,
-    )
-    document.recompute()
-    document.getObject("Sketch").addConstraint(
-        Sketcher.Constraint("Weight", num_of_coordinates, 1.000000)
-    )
-    document.recompute()
-    document.getObject("Sketch").addConstraint(
-        Sketcher.Constraint("Coincident", float(num_of_coordinates), 3, i - 1, 1)
-    )
-    document.recompute()
-    log.debug("Initial B-Spline prepared")
-
-    # Need to run through a for loop for each point
-    log.debug("Running a for loop for each point")
-    for i in range(1, num_of_coordinates):
-        log.debug("Setting up a B-Spline for point %s/%s", i, num_of_coordinates)
-        document.getObject("Sketch").addGeometry(
-            Part.Circle(
-                App.Vector(float(coordinates["x"][i]), float(coordinates["y"][i]), 0),
-                App.Vector(0, 0, 1),
-                10,
-            ),
-            True,
-        )
-        document.recompute()
-        document.getObject("Sketch").addConstraint(
-            Sketcher.Constraint(
-                "Equal",
-                float(num_of_coordinates) - 1 + i,
-                float(num_of_coordinates) + i,
-            )
-        )
-        document.recompute()
-        document.getObject("Sketch").addConstraint(
-            Sketcher.Constraint(
-                "Coincident", float(num_of_coordinates) + i, 3, float(i), 1
-            )
-        )
-        document.recompute()
-    log.debug("B-Spline set up for each point")
-
-    # Create the list for the appVector
-    log.debug("Creating the list for the appVector to draw the B-Spline")
-    app_vector_list = []
+    # Create Points for each coordinate
+    # for x, y in coordinates in the "coordinates" dataframe
+    log.debug("Checking the coordinates dataframe")
     for x, y in zip(coordinates["x"], coordinates["y"]):
-        app_vector_list.append(App.Vector(float(x), float(y)))
+        log.debug("x: %s | y: %s", f"{x:<6}", f"{y:<6}")
+        document.getObject("Sketch").addGeometry(
+            Part.Point(App.Vector(float(x), float(y), 0))
+        )
+        document.recompute()
+
+    # Check how many x coordinates there are in the dataframe
+    number_of_coord = coordinates["x"].count()
+    log.debug("Number of coordinates: %s", number_of_coord)
+    # Draw a B-spline by knots through the points
+
+    # Define the missing variables
+    _finalbsp_poles = []
+    _finalbsp_mults = []
+    _finalbsp_knots = []
+
+    log.debug("Drawing a B-spline by knots through the points")
+    import Sketcher  # Import the Sketcher module
+
     document.getObject("Sketch").addGeometry(
         Part.BSplineCurve(
-            app_vector_list,
-            None,
-            None,
-            False,
-            2,
-            None,
-            False,
+            _finalbsp_poles, _finalbsp_mults, _finalbsp_knots, False, 3, None, False
         ),
         False,
     )
-    log.debug("B-Spline drawn")
+    conList = []
+    for i in range(0, number_of_coord):
+        log.debug("Appending B-Spline Knot Point: %s/%s", i + 1, number_of_coord)
+        conList.append(
+            Sketcher.Constraint(
+                "InternalAlignment:Sketcher::BSplineKnotPoint",
+                number_of_coord + i,
+                1,
+                number_of_coord * 2,
+                i,
+            )
+        )
 
     # Save the new document
     document.saveAs(f"{cwd}/cad/{name}.FCStd")
