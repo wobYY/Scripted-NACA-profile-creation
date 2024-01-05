@@ -35,10 +35,6 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
         os.remove(f"{cwd}/cad/{name}.FCStd")
         log.debug("Existing document deleted")
 
-    # Need to import the PartDesign module in order to create a body
-    log.debug("Importing the PartDesign module")
-    from FreeCAD import _PartDesign as PartDesign
-
     # Add a new body to the document
     log.debug("Adding a new body to the document")
     document.addObject("PartDesign::Body", "Body")
