@@ -1,7 +1,7 @@
 import os
 import sys
 import pandas as pd
-from utils.logging import get_logger
+from utils.logging import get_logger  # pylint-disable: C0411
 
 # Setup the logger
 log = get_logger("snpc", "DEBUG")
@@ -12,8 +12,8 @@ log = get_logger("snpc", "DEBUG")
 # Docs: https://wiki.freecad.org/Embedding_FreeCAD
 freecad_path = "/usr/lib/freecad-python3/lib/"
 sys.path.append(freecad_path)
+# pylint-disable: E0401
 import FreeCAD  # Import FreeCAD after adding the path
-import FreeCADGui  # Import FreeCADGui after adding the path
 from FreeCAD import Base
 
 # Because PartDesign is not imported by default with the imports above
@@ -21,6 +21,7 @@ from FreeCAD import Base
 # Forum: https://forum.freecad.org/viewtopic.php?style=4&p=677043#p677043
 sys.path.append("/usr/lib/freecad/Mod")
 import PartDesign  # Import PartDesign after adding the Mod path
+import Sketcher  # Import Sketcher after adding the Mod path
 
 
 # Function to draw the profile from the csv
@@ -91,12 +92,12 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     log.debug("Body name set to: %s", body_name)
 
     # For the Body add a sketch in teh YZ plane
-    document.getObject("Body").newObject("Sketcher::SketchObject", "Sketch")
-    document.getObject("Sketch").Support = (
+    sketch = document.getObject("Body").newObject("Sketcher::SketchObject", "Sketch")
+    sketch.Support = (
         document.getObject("YZ_Plane"),
         [""],
     )
-    document.getObject("Sketch").MapMode = "FlatFace"
+    sketch.MapMode = "FlatFace"
     document.recompute()
 
     # Check how many x coordinates there are in the dataframe
@@ -110,25 +111,34 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     poles = []  # Poles for the B-spline
     for x, y in zip(coordinates["x"], coordinates["y"]):
         log.debug("x: %s | y: %s", f"{x:<6}", f"{y:<6}")
-        # document.getObject("Sketch").addGeometry(
-        #     Part.Point(App.Vector(float(x), float(y), 0))
-        # )
-        # document.recompute()
+        sketch.addGeometry(Part.Point(App.Vector(float(x), float(y), 0)))
+
+        # In order to have a valid sketch in FreeCAD
+        # We need to constraint all of our geometries in the sketch
+        # After which we'll be able to extrude the sketch into a solid
+        # Docs: https://wiki.freecad.org/Sketcher_scripting
+        log.debug("Constraining the points")
+        # sketch.addConstraint(Sketcher.Constraint("DistanceX"))
+
+        # After each point is created, we need to recompute the document
+        log.debug("Recomputing the document")
+        document.recompute()
         poles.append(V(float(x), float(y)))
+        log.debug("Point created and constrained")
 
     # Draw a B-spline by knots through the points
     # Docs: https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/BSplineCurve_API.md
     log.debug("Drawing B-Spline")
     b_spline = Part.BSplineCurve()
     b_spline.buildFromPoles(poles)
-    document.getObject("Sketch").addGeometry(b_spline)
+    sketch.addGeometry(b_spline)
     document.recompute()
     log.debug("B-Spline drawn")
 
     # Connect the first and last point with a straight line
     log.debug("Connecting the first and last point with a straight line")
     closing_line = Part.LineSegment(poles[0], poles[-1])
-    document.getObject("Sketch").addGeometry(closing_line)
+    sketch.addGeometry(closing_line)
     log.debug("Profile closed with a straight line")
 
     # Creating the domain around the profile
@@ -156,16 +166,16 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
 
     # Draw the domain
     log.debug("Drawing the domain")
-    document.getObject("Sketch").addGeometry(
+    sketch.addGeometry(
         Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0))
     )  # Top line
-    document.getObject("Sketch").addGeometry(
+    sketch.addGeometry(
         Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0))
     )  # Right line
-    document.getObject("Sketch").addGeometry(
+    sketch.addGeometry(
         Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0))
     )  # Bottom line
-    document.getObject("Sketch").addGeometry(
+    sketch.addGeometry(
         Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0))
     )  # Left line
     document.recompute()
