@@ -165,19 +165,64 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     y_below = min_y - (length * 3)  # 3x the profile length
 
     # Draw the domain
+    # According to the Constraint documentation
+    # Docs: https://wiki.freecad.org/Sketcher_scripting
+    # To constrain these lines you need to use
+    # ...er.Constraint("Coincient", first_line_id, edge_id, second_line_id, edge_id)
+    # Where edge ID is 0 for starting edge, 1 for ending and 2 for middle of the line
     log.debug("Drawing the domain")
     sketch.addGeometry(
         Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0))
     )  # Top line
+    # Constrain the line to be horizontal
+    log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(Sketcher.Constraint("Horizontal", 0))
+    sketch.addConstraint(
+        Sketcher.Constraint(
+            "DistanceX", 0, 1, -1, 1, App.Units.Quantity(f"{x_front} mm")
+        )
+    )  # Change first number for the line ID
+    sketch.addConstraint(
+        Sketcher.Constraint(
+            "DistanceX", 0, 2, -1, 1, App.Units.Quantity(f"{x_back} mm")
+        )
+    )  # Change first number for the line ID
+    sketch.addConstraint(
+        Sketcher.Constraint(
+            "DistanceY", 0, 1, -1, 1, App.Units.Quantity(f"{y_above} mm")
+        )
+    )  # Change first number for the line ID
     sketch.addGeometry(
         Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0))
     )  # Right line
+    # Constrain the line to be vertical
+    log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(Sketcher.Constraint("Vertical", 1))
+    # Constrain the last edge of 1st line with the first edge of the 2nd line
+    sketch.addConstraint(Sketcher.Constraint("Coincident", 0, 2, 1, 1))
     sketch.addGeometry(
         Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0))
     )  # Bottom line
+    # Constrain the line to be horizontal
+    log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(
+        Sketcher.Constraint(
+            "DistanceY", 2, 1, -1, 1, App.Units.Quantity(f"{y_below} mm")
+        )
+    )  # Change first number for the line ID
+    sketch.addConstraint(Sketcher.Constraint("Horizontal", 2))
+    # Constrain the last edge of 2nd line with the first edge of the 3rd line
+    sketch.addConstraint(Sketcher.Constraint("Coincident", 1, 2, 2, 1))
     sketch.addGeometry(
         Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0))
     )  # Left line
+    # Constrain the line to be vertical
+    log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(Sketcher.Constraint("Vertical", 3))
+    # Constrain the last edge of the 3rd line with the first edge of the 4th line
+    sketch.addConstraint(Sketcher.Constraint("Coincident", 2, 2, 3, 1))
+    # Constrain the last edge of the 4th line with the first edge of the 1st line
+    sketch.addConstraint(Sketcher.Constraint("Coincident", 0, 1, 3, 2))
     document.recompute()
     log.info("Domain created, profile ready to be extruded")
 
