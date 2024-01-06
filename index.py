@@ -88,9 +88,12 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     log.debug("Drawing B-Spline")
     b_spline = Part.BSplineCurve()
     b_spline.buildFromPoles(poles)
+    document.getObject("Sketch").addGeometry(b_spline)
     document.recompute()
-    Part.show(b_spline.toShape())
     log.debug("B-Spline drawn")
+
+    # Connect the first and last point with a straight line
+    log.debug("Connecting the first and last point with a straight line")
 
     # Save the new document
     document.saveAs(f"{cwd}/cad/{name}.FCStd")
