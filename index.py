@@ -77,10 +77,10 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     poles = []  # Poles for the B-spline
     for x, y in zip(coordinates["x"], coordinates["y"]):
         log.debug("x: %s | y: %s", f"{x:<6}", f"{y:<6}")
-        document.getObject("Sketch").addGeometry(
-            Part.Point(App.Vector(float(x), float(y), 0))
-        )
-        document.recompute()
+        # document.getObject("Sketch").addGeometry(
+        #     Part.Point(App.Vector(float(x), float(y), 0))
+        # )
+        # document.recompute()
         poles.append(V(float(x), float(y)))
 
     # Draw a B-spline by knots through the points
