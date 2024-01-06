@@ -1,5 +1,8 @@
-# Ignore .csv files in the /profiles/ directory
-/profiles/naca*.*
+# Ignore files in the /profiles/ directory
+/profiles/*
+
+# Ignore the cad folder
+cad/
 
 # Ignore notebook files
 *.ipynb
