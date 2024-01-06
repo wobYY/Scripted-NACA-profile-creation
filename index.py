@@ -25,6 +25,12 @@ import PartDesign  # Import PartDesign after adding the path
 
 # Function to draw the profile from the csv
 def draw_from_csv_coordinates(name, coordinates, **kwargs):
+    # Check if "cad" folder exists, if it doesn't create it
+    if not os.path.exists(f"{cwd}/cad"):
+        log.debug("cad folder doesn't exist, creating it")
+        os.mkdir(f"{cwd}/cad")
+        log.debug("cad folder created")
+
     # Create a new document
     log.debug("Creating a new document")
     document = App.newDocument()
@@ -60,47 +66,31 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     document.getObject("Sketch").MapMode = "FlatFace"
     document.recompute()
 
+    # Check how many x coordinates there are in the dataframe
+    number_of_coord = coordinates["x"].count()
+    log.debug("Number of coordinates: %s", number_of_coord)
+
     # Create Points for each coordinate
     # for x, y in coordinates in the "coordinates" dataframe
     log.debug("Checking the coordinates dataframe")
+    V = Base.Vector
+    poles = []  # Poles for the B-spline
     for x, y in zip(coordinates["x"], coordinates["y"]):
         log.debug("x: %s | y: %s", f"{x:<6}", f"{y:<6}")
         document.getObject("Sketch").addGeometry(
             Part.Point(App.Vector(float(x), float(y), 0))
         )
         document.recompute()
+        poles.append(V(float(x), float(y)))
 
-    # Check how many x coordinates there are in the dataframe
-    number_of_coord = coordinates["x"].count()
-    log.debug("Number of coordinates: %s", number_of_coord)
     # Draw a B-spline by knots through the points
-
-    # Define the missing variables
-    _finalbsp_poles = []
-    _finalbsp_mults = []
-    _finalbsp_knots = []
-
-    log.debug("Drawing a B-spline by knots through the points")
-    import Sketcher  # Import the Sketcher module
-
-    document.getObject("Sketch").addGeometry(
-        Part.BSplineCurve(
-            _finalbsp_poles, _finalbsp_mults, _finalbsp_knots, False, 3, None, False
-        ),
-        False,
-    )
-    conList = []
-    for i in range(0, number_of_coord):
-        log.debug("Appending B-Spline Knot Point: %s/%s", i + 1, number_of_coord)
-        conList.append(
-            Sketcher.Constraint(
-                "InternalAlignment:Sketcher::BSplineKnotPoint",
-                number_of_coord + i,
-                1,
-                number_of_coord * 2,
-                i,
-            )
-        )
+    # Docs: https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/BSplineCurve_API.md
+    log.debug("Drawing B-Spline")
+    b_spline = Part.BSplineCurve()
+    b_spline.buildFromPoles(poles)
+    document.recompute()
+    Part.show(b_spline.toShape())
+    log.debug("B-Spline drawn")
 
     # Save the new document
     document.saveAs(f"{cwd}/cad/{name}.FCStd")
