@@ -24,6 +24,33 @@ import PartDesign  # Import PartDesign after adding the Mod path
 import Sketcher  # Import Sketcher after adding the Mod path
 
 
+def __coincident(sketch, f_line_id, f_edge_id, s_line_id, s_edge_id):
+    """This function constrains two lines
+
+    Args:
+        sketch (object): Sketch object
+        f_line_id (int): First line ID
+        f_edge_id (int): First edge ID
+        s_line_id (int): Second line ID
+        s_edge_id (int): Second edge ID
+    """
+    sketch.addConstraint(
+        Sketcher.Constraint("Coincident", f_line_id, f_edge_id, s_line_id, s_edge_id)
+    )
+
+
+def __ll_id(sketch):
+    """This function returns the last line ID of the sketch
+
+    Args:
+        sketch (object): Sketch object
+
+    Returns:
+        int: Last line ID
+    """
+    return int(len(sketch.Geometry) - 1)
+
+
 # Function to draw the profile from the csv
 def draw_from_csv_coordinates(name, coordinates, **kwargs):
     # Make sure that the "coordinates" variable is a dataframe
@@ -171,58 +198,69 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     # ...er.Constraint("Coincient", first_line_id, edge_id, second_line_id, edge_id)
     # Where edge ID is 0 for starting edge, 1 for ending and 2 for middle of the line
     log.debug("Drawing the domain")
-    sketch.addGeometry(
-        Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0))
-    )  # Top line
+    # Drawing the top line
+    sketch.addGeometry(Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0)))
+
     # Constrain the line to be horizontal
     log.debug("Constraining line: %s", sketch.Geometry[-1])
-    sketch.addConstraint(Sketcher.Constraint("Horizontal", 0))
+    sketch.addConstraint(Sketcher.Constraint("Horizontal", __ll_id(sketch)))
+
+    # Adding distances from origin to the line
     sketch.addConstraint(
         Sketcher.Constraint(
-            "DistanceX", 0, 1, -1, 1, App.Units.Quantity(f"{x_front} mm")
+            "DistanceX", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{x_front} mm")
         )
-    )  # Change first number for the line ID
+    )
     sketch.addConstraint(
         Sketcher.Constraint(
-            "DistanceX", 0, 2, -1, 1, App.Units.Quantity(f"{x_back} mm")
+            "DistanceX", __ll_id(sketch), 2, -1, 1, App.Units.Quantity(f"{x_back} mm")
         )
-    )  # Change first number for the line ID
+    )
     sketch.addConstraint(
         Sketcher.Constraint(
-            "DistanceY", 0, 1, -1, 1, App.Units.Quantity(f"{y_above} mm")
+            "DistanceY", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{y_above} mm")
         )
-    )  # Change first number for the line ID
-    sketch.addGeometry(
-        Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0))
-    )  # Right line
+    )
+
+    # Drawing the right line
+    sketch.addGeometry(Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0)))
+
     # Constrain the line to be vertical
     log.debug("Constraining line: %s", sketch.Geometry[-1])
-    sketch.addConstraint(Sketcher.Constraint("Vertical", 1))
+    sketch.addConstraint(Sketcher.Constraint("Vertical", __ll_id(sketch)))
+
     # Constrain the last edge of 1st line with the first edge of the 2nd line
-    sketch.addConstraint(Sketcher.Constraint("Coincident", 0, 2, 1, 1))
-    sketch.addGeometry(
-        Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0))
-    )  # Bottom line
+    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+
+    # Drawing the bottom line
+    sketch.addGeometry(Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0)))
+
     # Constrain the line to be horizontal
     log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(Sketcher.Constraint("Horizontal", __ll_id(sketch)))
+
+    # Adding distances from origin to the line
     sketch.addConstraint(
         Sketcher.Constraint(
-            "DistanceY", 2, 1, -1, 1, App.Units.Quantity(f"{y_below} mm")
+            "DistanceY", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{y_below} mm")
         )
-    )  # Change first number for the line ID
-    sketch.addConstraint(Sketcher.Constraint("Horizontal", 2))
+    )
+
     # Constrain the last edge of 2nd line with the first edge of the 3rd line
-    sketch.addConstraint(Sketcher.Constraint("Coincident", 1, 2, 2, 1))
-    sketch.addGeometry(
-        Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0))
-    )  # Left line
+    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+
+    # Drawing the left line
+    sketch.addGeometry(Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0)))
+
     # Constrain the line to be vertical
     log.debug("Constraining line: %s", sketch.Geometry[-1])
-    sketch.addConstraint(Sketcher.Constraint("Vertical", 3))
+    sketch.addConstraint(Sketcher.Constraint("Vertical", __ll_id(sketch)))
+
     # Constrain the last edge of the 3rd line with the first edge of the 4th line
-    sketch.addConstraint(Sketcher.Constraint("Coincident", 2, 2, 3, 1))
+    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+
     # Constrain the last edge of the 4th line with the first edge of the 1st line
-    sketch.addConstraint(Sketcher.Constraint("Coincident", 0, 1, 3, 2))
+    __coincident(sketch, __ll_id(sketch) - 3, 1, __ll_id(sketch), 2)
     document.recompute()
     log.info("Domain created, profile ready to be extruded")
 
@@ -234,8 +272,8 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
 # Get the current working directory
 cwd = os.getcwd()
 
+log.info("Checking for all text files in the /profiles folder")
 for file in os.listdir(cwd + "/profiles"):
-    log.info("Checking for all text files in the /profiles folder")
     if file.endswith(".txt"):
         log.debug("Found a .txt file (%s), converting to .csv", file)
 
