@@ -131,6 +131,46 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     document.getObject("Sketch").addGeometry(closing_line)
     log.debug("Profile closed with a straight line")
 
+    # Creating the domain around the profile
+    log.info("Profile created, creating the domain around the profile")
+
+    # Get the minimum and maximum x and y coordinates
+    log.debug("Getting the minimum and maximum x and y coordinates")
+    min_x = coordinates["x"].min()
+    max_x = coordinates["x"].max()
+    min_y = coordinates["y"].min()
+    max_y = coordinates["y"].max()
+    log.debug("Minimum x: %s | Maximum x: %s", f"{min_x:<6}", f"{max_x:<6}")
+    log.debug("Minimum y: %s | Maximum y: %s", f"{min_y:<6}", f"{max_y:<6}")
+
+    # Calculating the length of the profile
+    log.debug("Calculating the length of the profile")
+    length = max_x - min_x
+
+    # Calculating the dimensions for the domain
+    log.debug("Calculating the dimensions for the domain")
+    x_front = min_x - (length * 3)  # 3x the profile length for the flow to develop
+    x_back = max_x + (length * 7)  # 7x the profile length
+    y_above = max_y + (length * 3)  # 3x the profile length
+    y_below = min_y - (length * 3)  # 3x the profile length
+
+    # Draw the domain
+    log.debug("Drawing the domain")
+    document.getObject("Sketch").addGeometry(
+        Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0))
+    )  # Top line
+    document.getObject("Sketch").addGeometry(
+        Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0))
+    )  # Right line
+    document.getObject("Sketch").addGeometry(
+        Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0))
+    )  # Bottom line
+    document.getObject("Sketch").addGeometry(
+        Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0))
+    )  # Left line
+    document.recompute()
+    log.info("Domain created, profile ready to be extruded")
+
     # Save the new document
     document.saveAs(f"{cwd}/cad/{name}.FCStd")
     log.debug("Document saved as %s.FCStd", name)
@@ -140,6 +180,7 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
 cwd = os.getcwd()
 
 for file in os.listdir(cwd + "/profiles"):
+    log.info("Checking for all text files in the /profiles folder")
     if file.endswith(".txt"):
         log.debug("Found a .txt file (%s), converting to .csv", file)
 
@@ -156,7 +197,6 @@ for file in os.listdir(cwd + "/profiles"):
         # Read the file as a dataframe
         log.debug("Storing the file as a dataframe")
         df = pd.DataFrame([line.split() for line in lines], columns=["x", "y"])
-        # log.debug(df)
 
         # Remove .txt from the filename
         log.debug("Removing .txt from the filename")
@@ -164,7 +204,7 @@ for file in os.listdir(cwd + "/profiles"):
         log.debug("Filename: %s", filename)
 
         # Save the file as a csv
-        log.debug("Saving the file as a csv")
+        log.debug("Saving the processed file as a csv")
         df.to_csv(f"profiles/{filename}.csv", index=False, header=False)
         log.info("Saved %s as a csv", filename)
 
