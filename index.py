@@ -137,21 +137,37 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     V = Base.Vector
     poles = []  # Poles for the B-spline
     for x, y in zip(coordinates["x"], coordinates["y"]):
-        log.debug("x: %s | y: %s", f"{x:<6}", f"{y:<6}")
+        log.debug("Processing point with coords: x: %s | y: %s", f"{x:<6}", f"{y:<6}")
         sketch.addGeometry(Part.Point(App.Vector(float(x), float(y), 0)))
+        document.recompute()
 
         # In order to have a valid sketch in FreeCAD
         # We need to constraint all of our geometries in the sketch
         # After which we'll be able to extrude the sketch into a solid
         # Docs: https://wiki.freecad.org/Sketcher_scripting
-        log.debug("Constraining the points")
-        # sketch.addConstraint(Sketcher.Constraint("DistanceX"))
+        log.debug("Constraining the %s", sketch.Geometry[-1])
+        sketch.addConstraint(
+            Sketcher.Constraint(
+                "DistanceX", -2, 1, __ll_id(sketch), 1, App.Units.Quantity(f"{x} mm")
+            )
+        )
+        document.recompute()
+
+        sketch.addConstraint(
+            Sketcher.Constraint(
+                "DistanceY", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{y} mm")
+            )
+        )
+        document.recompute()
+        log.debug("Points constrained")
 
         # After each point is created, we need to recompute the document
         log.debug("Recomputing the document")
         document.recompute()
-        poles.append(V(float(x), float(y)))
+
         log.debug("Point created and constrained")
+        poles.append(V(float(x), float(y)))
+        log.debug("Point added to the list of poles for the B-Spline creation later on")
 
     # Draw a B-spline by knots through the points
     # Docs: https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/BSplineCurve_API.md
@@ -166,6 +182,12 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     log.debug("Connecting the first and last point with a straight line")
     closing_line = Part.LineSegment(poles[0], poles[-1])
     sketch.addGeometry(closing_line)
+    document.recompute()
+
+    # Add constraints for the line
+    __coincident(sketch, __ll_id(sketch), 1, 0, 1)
+    __coincident(sketch, __ll_id(sketch), 2, number_of_coord - 1, 1)
+    document.recompute()
     log.debug("Profile closed with a straight line")
 
     # Creating the domain around the profile
@@ -208,12 +230,12 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     # Adding distances from origin to the line
     sketch.addConstraint(
         Sketcher.Constraint(
-            "DistanceX", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{x_front} mm")
+            "DistanceX", -1, 1, __ll_id(sketch), 1, App.Units.Quantity(f"{x_front} mm")
         )
     )
     sketch.addConstraint(
         Sketcher.Constraint(
-            "DistanceX", __ll_id(sketch), 2, -1, 1, App.Units.Quantity(f"{x_back} mm")
+            "DistanceX", -1, 1, __ll_id(sketch), 2, App.Units.Quantity(f"{x_back} mm")
         )
     )
     sketch.addConstraint(
