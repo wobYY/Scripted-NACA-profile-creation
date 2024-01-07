@@ -1,6 +1,6 @@
 # WIP
 
-## This project is still **Work In Progress**.
+This project is still **Work In Progress**.
 
 # Goal of the project
 
