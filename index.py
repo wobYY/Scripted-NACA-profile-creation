@@ -219,8 +219,9 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     # To constrain these lines you need to use
     # ...er.Constraint("Coincient", first_line_id, edge_id, second_line_id, edge_id)
     # Where edge ID is 0 for starting edge, 1 for ending and 2 for middle of the line
-    log.debug("Drawing the domain")
+    log.info("Drawing the domain")
     # Drawing the top line
+    log.debug("Drawing the top line of the domain")
     sketch.addGeometry(Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0)))
 
     # Constrain the line to be horizontal
@@ -245,6 +246,7 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     )
 
     # Drawing the right line
+    log.debug("Drawing the right line of the domain")
     sketch.addGeometry(Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0)))
 
     # Constrain the line to be vertical
@@ -255,6 +257,7 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
 
     # Drawing the bottom line
+    log.debug("Drawing the bottom line of the domain")
     sketch.addGeometry(Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0)))
 
     # Constrain the line to be horizontal
@@ -272,6 +275,7 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
 
     # Drawing the left line
+    log.debug("Drawing the left line of the domain")
     sketch.addGeometry(Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0)))
 
     # Constrain the line to be vertical
