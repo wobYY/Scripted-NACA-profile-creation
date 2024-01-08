@@ -8,7 +8,8 @@ The goal of this project is to automate a lot of manual labour that's done in or
 
 ## Planned features
 
-- [x] Load a file and create a 2D extrudable sketch in FreeCAD (enables it to be ran on HPC) - 40%
+- [x] Load a file and create a 2D extrudable sketch in FreeCAD (enables it to be ran on HPC) - 30%
+- [x] Create a 3D model from the 2D sketch - 10%
 - [ ] Export the file in the necessary format (STEP) - 5%
 - [ ] Create the mesh from the 3D model - 40%
 - [ ] Run a CFD simulation using the 3D model on HPC - 10%
