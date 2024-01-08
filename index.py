@@ -1,7 +1,7 @@
 import os
 import sys
 import pandas as pd
-from utils.logging import get_logger
+from utils.logging import get_logger  # pylint-disable: C0411
 
 # Setup the logger
 log = get_logger("snpc", "DEBUG")
@@ -10,17 +10,46 @@ log = get_logger("snpc", "DEBUG")
 # It's possible to do both on Windows and Linux
 # But it's easier to do it on Linux
 # Docs: https://wiki.freecad.org/Embedding_FreeCAD
-freecad_path = "/usr/lib/freecad-python3/lib/"
-sys.path.append(freecad_path)
-import FreeCAD  # Import FreeCAD after adding the path
-import FreeCADGui  # Import FreeCADGui after adding the path
-from FreeCAD import Base
+sys.path.append("/usr/lib/freecad-python3/lib/")
 
 # Because PartDesign is not imported by default with the imports above
 # We need to import the module folder for PartDesign
 # Forum: https://forum.freecad.org/viewtopic.php?style=4&p=677043#p677043
 sys.path.append("/usr/lib/freecad/Mod")
+
+# pylint-disable: E0401
+import FreeCAD  # Import FreeCAD after adding the path
+from FreeCAD import Base
+
 import PartDesign  # Import PartDesign after adding the Mod path
+import Sketcher  # Import Sketcher after adding the Mod path
+
+
+def __coincident(sketch, f_line_id, f_edge_id, s_line_id, s_edge_id):
+    """This function constrains two lines
+
+    Args:
+        sketch (object): Sketch object
+        f_line_id (int): First line ID
+        f_edge_id (int): First edge ID
+        s_line_id (int): Second line ID
+        s_edge_id (int): Second edge ID
+    """
+    sketch.addConstraint(
+        Sketcher.Constraint("Coincident", f_line_id, f_edge_id, s_line_id, s_edge_id)
+    )
+
+
+def __ll_id(sketch):
+    """This function returns the last line ID of the sketch
+
+    Args:
+        sketch (object): Sketch object
+
+    Returns:
+        int: Last line ID
+    """
+    return int(len(sketch.Geometry) - 1)
 
 
 # Function to draw the profile from the csv
@@ -48,8 +77,11 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     # If they do, ask them for the scale factor
     # If they don't, set the scale factor to 1
     log.debug("Checking if the user wants to scale the profile")
-    scale_factor = 1
-    if input(f"Do you want to scale the {name} profile? (y/n): ").lower() == "y":
+    scale_factor = 1 if not "scale_factor" in kwargs else kwargs.get("scale_factor")
+    if (
+        input(f"Do you want to scale the {name} profile? (y/n): ").lower() == "y"
+        and kwargs.get("scale_factor") is None
+    ):
         log.debug("User wants to scale the profile")
         scale_factor = float(input("Enter the scale factor: "))
         log.debug("Scale factor set to: %s", scale_factor)
@@ -76,27 +108,21 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
 
     # Add a new body to the document
     log.debug("Adding a new body to the document")
-    document.addObject("PartDesign::Body", "Body")
+    log.debug("Ensuring the body name is valid")
+    body_name = name.replace(" ", "_").replace("-", "_").lower()
+    log.debug("Setting the body name to: %s", body_name)
+    body = document.addObject("PartDesign::Body", body_name)
+    body.Visibility = 1
     document.recompute()
     log.debug("Body added to the document")
 
-    # Rename the body
-    # Remove any whitespaces from the "name" variable
-    # Replace any symbols with underscores
-    log.debug("Ensuring the body name is valid")
-    body_name = name.replace(" ", "_").replace("-", "_")
-    log.debug("Setting the body name to: %s", body_name)
-    document.getObject("Body").Label = body_name
-    document.recompute()
-    log.debug("Body name set to: %s", body_name)
-
     # For the Body add a sketch in teh YZ plane
-    document.getObject("Body").newObject("Sketcher::SketchObject", "Sketch")
-    document.getObject("Sketch").Support = (
+    sketch = body.newObject("Sketcher::SketchObject", "Sketch")
+    sketch.Support = (
         document.getObject("YZ_Plane"),
         [""],
     )
-    document.getObject("Sketch").MapMode = "FlatFace"
+    sketch.MapMode = "FlatFace"
     document.recompute()
 
     # Check how many x coordinates there are in the dataframe
@@ -109,26 +135,57 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     V = Base.Vector
     poles = []  # Poles for the B-spline
     for x, y in zip(coordinates["x"], coordinates["y"]):
-        log.debug("x: %s | y: %s", f"{x:<6}", f"{y:<6}")
-        # document.getObject("Sketch").addGeometry(
-        #     Part.Point(App.Vector(float(x), float(y), 0))
-        # )
-        # document.recompute()
+        log.debug("Processing point with coords: x: %s | y: %s", f"{x:<6}", f"{y:<6}")
+        sketch.addGeometry(Part.Point(App.Vector(float(x), float(y), 0)))
+        document.recompute()
+
+        # In order to have a valid sketch in FreeCAD
+        # We need to constraint all of our geometries in the sketch
+        # After which we'll be able to extrude the sketch into a solid
+        # Docs: https://wiki.freecad.org/Sketcher_scripting
+        log.debug("Constraining the %s", sketch.Geometry[-1])
+        sketch.addConstraint(
+            Sketcher.Constraint(
+                "DistanceX", -2, 1, __ll_id(sketch), 1, App.Units.Quantity(f"{x} mm")
+            )
+        )
+        document.recompute()
+
+        sketch.addConstraint(
+            Sketcher.Constraint(
+                "DistanceY", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{y} mm")
+            )
+        )
+        document.recompute()
+        log.debug("Points constrained")
+
+        # After each point is created, we need to recompute the document
+        log.debug("Recomputing the document")
+        document.recompute()
+
+        log.debug("Point created and constrained")
         poles.append(V(float(x), float(y)))
+        log.debug("Point added to the list of poles for the B-Spline creation later on")
 
     # Draw a B-spline by knots through the points
     # Docs: https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/BSplineCurve_API.md
     log.debug("Drawing B-Spline")
     b_spline = Part.BSplineCurve()
     b_spline.buildFromPoles(poles)
-    document.getObject("Sketch").addGeometry(b_spline)
+    sketch.addGeometry(b_spline)
     document.recompute()
     log.debug("B-Spline drawn")
 
     # Connect the first and last point with a straight line
     log.debug("Connecting the first and last point with a straight line")
     closing_line = Part.LineSegment(poles[0], poles[-1])
-    document.getObject("Sketch").addGeometry(closing_line)
+    sketch.addGeometry(closing_line)
+    document.recompute()
+
+    # Add constraints for the line
+    __coincident(sketch, __ll_id(sketch), 1, 0, 1)
+    __coincident(sketch, __ll_id(sketch), 2, number_of_coord - 1, 1)
+    document.recompute()
     log.debug("Profile closed with a straight line")
 
     # Creating the domain around the profile
@@ -155,21 +212,105 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     y_below = min_y - (length * 3)  # 3x the profile length
 
     # Draw the domain
-    log.debug("Drawing the domain")
-    document.getObject("Sketch").addGeometry(
-        Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0))
-    )  # Top line
-    document.getObject("Sketch").addGeometry(
-        Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0))
-    )  # Right line
-    document.getObject("Sketch").addGeometry(
-        Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0))
-    )  # Bottom line
-    document.getObject("Sketch").addGeometry(
-        Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0))
-    )  # Left line
+    # According to the Constraint documentation
+    # Docs: https://wiki.freecad.org/Sketcher_scripting
+    # To constrain these lines you need to use
+    # ...er.Constraint("Coincient", first_line_id, edge_id, second_line_id, edge_id)
+    # Where edge ID is 0 for starting edge, 1 for ending and 2 for middle of the line
+    log.info("Drawing the domain")
+    # Drawing the top line
+    log.debug("Drawing the top line of the domain")
+    sketch.addGeometry(Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0)))
+
+    # Constrain the line to be horizontal
+    log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(Sketcher.Constraint("Horizontal", __ll_id(sketch)))
+
+    # Adding distances from origin to the line
+    sketch.addConstraint(
+        Sketcher.Constraint(
+            "DistanceX", -1, 1, __ll_id(sketch), 1, App.Units.Quantity(f"{x_front} mm")
+        )
+    )
+    sketch.addConstraint(
+        Sketcher.Constraint(
+            "DistanceX", -1, 1, __ll_id(sketch), 2, App.Units.Quantity(f"{x_back} mm")
+        )
+    )
+    sketch.addConstraint(
+        Sketcher.Constraint(
+            "DistanceY", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{y_above} mm")
+        )
+    )
+
+    # Drawing the right line
+    log.debug("Drawing the right line of the domain")
+    sketch.addGeometry(Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0)))
+
+    # Constrain the line to be vertical
+    log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(Sketcher.Constraint("Vertical", __ll_id(sketch)))
+
+    # Constrain the last edge of 1st line with the first edge of the 2nd line
+    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+
+    # Drawing the bottom line
+    log.debug("Drawing the bottom line of the domain")
+    sketch.addGeometry(Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0)))
+
+    # Constrain the line to be horizontal
+    log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(Sketcher.Constraint("Horizontal", __ll_id(sketch)))
+
+    # Adding distances from origin to the line
+    sketch.addConstraint(
+        Sketcher.Constraint(
+            "DistanceY", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{y_below} mm")
+        )
+    )
+
+    # Constrain the last edge of 2nd line with the first edge of the 3rd line
+    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+
+    # Drawing the left line
+    log.debug("Drawing the left line of the domain")
+    sketch.addGeometry(Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0)))
+
+    # Constrain the line to be vertical
+    log.debug("Constraining line: %s", sketch.Geometry[-1])
+    sketch.addConstraint(Sketcher.Constraint("Vertical", __ll_id(sketch)))
+
+    # Constrain the last edge of the 3rd line with the first edge of the 4th line
+    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+
+    # Constrain the last edge of the 4th line with the first edge of the 1st line
+    __coincident(sketch, __ll_id(sketch) - 3, 1, __ll_id(sketch), 2)
     document.recompute()
     log.info("Domain created, profile ready to be extruded")
+
+    # Extrude the sketch
+    log.info("Extruding the sketch")
+    pad_name = f"{name.lower()}_extrude"
+    body.newObject(
+        "PartDesign::Pad", pad_name
+    ).Profile = sketch  # Base sketch is sketch
+    document.getObject(pad_name).Length = kwargs.get(
+        "extrude_length", 100
+    )  # Extrude length is 100mm by default if not specified in kwargs
+    document.recompute()
+    # document.getObject(pad_name).AlongSketchNormal = 1  # Normal to the sketch
+    # document.getObject(pad_name).TaperAngle = 0  # No taper angle
+    document.getObject(pad_name).UseCustomVector = False  # Don't use custom vector
+    document.getObject(pad_name).Midplane = 1  # Don't use midplane
+    document.getObject(pad_name).Direction = (1, -0, 0)
+    document.getObject(pad_name).Type = 0
+    document.getObject(pad_name).UpToFace = None
+    document.getObject(pad_name).Reversed = 0
+    document.getObject(pad_name).Offset = 0
+    document.getObject(pad_name).Visibility = 1  # Show the extrusion
+    sketch.Visibility = 0  # Hide the sketch
+    document.recompute()
+    log.info("Sketch extruded by %s mm", kwargs.get("extrude_length", 100))
 
     # Save the new document
     document.saveAs(f"{cwd}/cad/{name}.FCStd")
@@ -179,35 +320,43 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
 # Get the current working directory
 cwd = os.getcwd()
 
-for file in os.listdir(cwd + "/profiles"):
+
+def process_all_profiles_in_parent_dir():
     log.info("Checking for all text files in the /profiles folder")
-    if file.endswith(".txt"):
-        log.debug("Found a .txt file (%s), converting to .csv", file)
+    for file in os.listdir(cwd + "/profiles"):
+        if file.endswith(".txt"):
+            log.debug("Found a .txt file (%s), converting to .csv", file)
 
-        # Open the file
-        with open("profiles/" + file, "r") as f:
-            lines = f.readlines()
+            # Open the file
+            with open("profiles/" + file, "r") as f:
+                lines = f.readlines()
 
-        # If the file contains NACA in the first line remove the first line
-        log.debug("Checking if the first line contains NACA")
-        if "NACA" in lines[0]:
-            log.debug("First line contains NACA, removing the first line")
-            lines = lines[1:]
+            # If the file contains NACA in the first line remove the first line
+            log.debug("Checking if the first line contains NACA")
+            if "NACA" in lines[0]:
+                log.debug("First line contains NACA, removing the first line")
+                lines = lines[1:]
 
-        # Read the file as a dataframe
-        log.debug("Storing the file as a dataframe")
-        df = pd.DataFrame([line.split() for line in lines], columns=["x", "y"])
+            # Read the file as a dataframe
+            log.debug("Storing the file as a dataframe")
+            df = pd.DataFrame([line.split() for line in lines], columns=["x", "y"])
 
-        # Remove .txt from the filename
-        log.debug("Removing .txt from the filename")
-        filename = file[:-4]
-        log.debug("Filename: %s", filename)
+            # Remove .txt from the filename
+            log.debug("Removing .txt from the filename")
+            filename = file[:-4]
+            log.debug("Filename: %s", filename)
 
-        # Save the file as a csv
-        log.debug("Saving the processed file as a csv")
-        df.to_csv(f"profiles/{filename}.csv", index=False, header=False)
-        log.info("Saved %s as a csv", filename)
+            # Save the file as a csv
+            log.debug("Saving the processed file as a csv")
+            df.to_csv(f"profiles/{filename}.csv", index=False, header=False)
+            log.info("Saved %s as a csv", filename)
 
-        # Draw the profile from the csv
-        log.info("Drawing the profile from coordinates provided in %s.csv", filename)
-        draw_from_csv_coordinates(filename, df)
+            # Draw the profile from the csv
+            log.info(
+                "Drawing the profile from coordinates provided in %s.csv", filename
+            )
+            draw_from_csv_coordinates(filename, df)
+
+
+if __name__ == "__main__":
+    process_all_profiles_in_parent_dir()
