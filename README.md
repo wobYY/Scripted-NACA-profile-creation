@@ -13,4 +13,4 @@ The goal of this project is to automate a lot of manual labour that's done in or
 - [ ] Export the file in the necessary format (STEP) - 5%
 - [ ] Create the mesh from the 3D model - 40%
 - [ ] Run a CFD simulation using the 3D model on HPC - 10%
-- [ ] Postprocessing of the results (CD/CL)
+- [ ] Postprocessing of the results (CD/CL) - 5%
