@@ -10,16 +10,17 @@ log = get_logger("snpc", "DEBUG")
 # It's possible to do both on Windows and Linux
 # But it's easier to do it on Linux
 # Docs: https://wiki.freecad.org/Embedding_FreeCAD
-freecad_path = "/usr/lib/freecad-python3/lib/"
-sys.path.append(freecad_path)
-# pylint-disable: E0401
-import FreeCAD  # Import FreeCAD after adding the path
-from FreeCAD import Base
+sys.path.append("/usr/lib/freecad-python3/lib/")
 
 # Because PartDesign is not imported by default with the imports above
 # We need to import the module folder for PartDesign
 # Forum: https://forum.freecad.org/viewtopic.php?style=4&p=677043#p677043
 sys.path.append("/usr/lib/freecad/Mod")
+
+# pylint-disable: E0401
+import FreeCAD  # Import FreeCAD after adding the path
+from FreeCAD import Base
+
 import PartDesign  # Import PartDesign after adding the Mod path
 import Sketcher  # Import Sketcher after adding the Mod path
 
@@ -76,8 +77,11 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     # If they do, ask them for the scale factor
     # If they don't, set the scale factor to 1
     log.debug("Checking if the user wants to scale the profile")
-    scale_factor = 1
-    if input(f"Do you want to scale the {name} profile? (y/n): ").lower() == "y":
+    scale_factor = 1 if not "scale_factor" in kwargs else kwargs.get("scale_factor")
+    if (
+        input(f"Do you want to scale the {name} profile? (y/n): ").lower() == "y"
+        and kwargs.get("scale_factor") is None
+    ):
         log.debug("User wants to scale the profile")
         scale_factor = float(input("Enter the scale factor: "))
         log.debug("Scale factor set to: %s", scale_factor)
@@ -104,22 +108,16 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
 
     # Add a new body to the document
     log.debug("Adding a new body to the document")
-    document.addObject("PartDesign::Body", "Body")
+    log.debug("Ensuring the body name is valid")
+    body_name = name.replace(" ", "_").replace("-", "_").lower()
+    log.debug("Setting the body name to: %s", body_name)
+    body = document.addObject("PartDesign::Body", body_name)
+    body.Visibility = 1
     document.recompute()
     log.debug("Body added to the document")
 
-    # Rename the body
-    # Remove any whitespaces from the "name" variable
-    # Replace any symbols with underscores
-    log.debug("Ensuring the body name is valid")
-    body_name = name.replace(" ", "_").replace("-", "_")
-    log.debug("Setting the body name to: %s", body_name)
-    document.getObject("Body").Label = body_name
-    document.recompute()
-    log.debug("Body name set to: %s", body_name)
-
     # For the Body add a sketch in teh YZ plane
-    sketch = document.getObject("Body").newObject("Sketcher::SketchObject", "Sketch")
+    sketch = body.newObject("Sketcher::SketchObject", "Sketch")
     sketch.Support = (
         document.getObject("YZ_Plane"),
         [""],
@@ -290,6 +288,30 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     document.recompute()
     log.info("Domain created, profile ready to be extruded")
 
+    # Extrude the sketch
+    log.info("Extruding the sketch")
+    pad_name = f"{name.lower()}_extrude"
+    body.newObject(
+        "PartDesign::Pad", pad_name
+    ).Profile = sketch  # Base sketch is sketch
+    document.getObject(pad_name).Length = kwargs.get(
+        "extrude_length", 100
+    )  # Extrude length is 100mm by default if not specified in kwargs
+    document.recompute()
+    # document.getObject(pad_name).AlongSketchNormal = 1  # Normal to the sketch
+    # document.getObject(pad_name).TaperAngle = 0  # No taper angle
+    document.getObject(pad_name).UseCustomVector = False  # Don't use custom vector
+    document.getObject(pad_name).Midplane = 1  # Don't use midplane
+    document.getObject(pad_name).Direction = (1, -0, 0)
+    document.getObject(pad_name).Type = 0
+    document.getObject(pad_name).UpToFace = None
+    document.getObject(pad_name).Reversed = 0
+    document.getObject(pad_name).Offset = 0
+    document.getObject(pad_name).Visibility = 1  # Show the extrusion
+    sketch.Visibility = 0  # Hide the sketch
+    document.recompute()
+    log.info("Sketch extruded by %s mm", kwargs.get("extrude_length", 100))
+
     # Save the new document
     document.saveAs(f"{cwd}/cad/{name}.FCStd")
     log.debug("Document saved as %s.FCStd", name)
@@ -298,35 +320,43 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
 # Get the current working directory
 cwd = os.getcwd()
 
-log.info("Checking for all text files in the /profiles folder")
-for file in os.listdir(cwd + "/profiles"):
-    if file.endswith(".txt"):
-        log.debug("Found a .txt file (%s), converting to .csv", file)
 
-        # Open the file
-        with open("profiles/" + file, "r") as f:
-            lines = f.readlines()
+def process_all_profiles_in_parent_dir():
+    log.info("Checking for all text files in the /profiles folder")
+    for file in os.listdir(cwd + "/profiles"):
+        if file.endswith(".txt"):
+            log.debug("Found a .txt file (%s), converting to .csv", file)
 
-        # If the file contains NACA in the first line remove the first line
-        log.debug("Checking if the first line contains NACA")
-        if "NACA" in lines[0]:
-            log.debug("First line contains NACA, removing the first line")
-            lines = lines[1:]
+            # Open the file
+            with open("profiles/" + file, "r") as f:
+                lines = f.readlines()
 
-        # Read the file as a dataframe
-        log.debug("Storing the file as a dataframe")
-        df = pd.DataFrame([line.split() for line in lines], columns=["x", "y"])
+            # If the file contains NACA in the first line remove the first line
+            log.debug("Checking if the first line contains NACA")
+            if "NACA" in lines[0]:
+                log.debug("First line contains NACA, removing the first line")
+                lines = lines[1:]
 
-        # Remove .txt from the filename
-        log.debug("Removing .txt from the filename")
-        filename = file[:-4]
-        log.debug("Filename: %s", filename)
+            # Read the file as a dataframe
+            log.debug("Storing the file as a dataframe")
+            df = pd.DataFrame([line.split() for line in lines], columns=["x", "y"])
 
-        # Save the file as a csv
-        log.debug("Saving the processed file as a csv")
-        df.to_csv(f"profiles/{filename}.csv", index=False, header=False)
-        log.info("Saved %s as a csv", filename)
+            # Remove .txt from the filename
+            log.debug("Removing .txt from the filename")
+            filename = file[:-4]
+            log.debug("Filename: %s", filename)
 
-        # Draw the profile from the csv
-        log.info("Drawing the profile from coordinates provided in %s.csv", filename)
-        draw_from_csv_coordinates(filename, df)
+            # Save the file as a csv
+            log.debug("Saving the processed file as a csv")
+            df.to_csv(f"profiles/{filename}.csv", index=False, header=False)
+            log.info("Saved %s as a csv", filename)
+
+            # Draw the profile from the csv
+            log.info(
+                "Drawing the profile from coordinates provided in %s.csv", filename
+            )
+            draw_from_csv_coordinates(filename, df)
+
+
+if __name__ == "__main__":
+    process_all_profiles_in_parent_dir()
