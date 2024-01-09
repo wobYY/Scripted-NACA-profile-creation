@@ -313,6 +313,18 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     log.info("Sketch extruded by %s mm", kwargs.get("extrude_length", 100))
 
     # Save the new document
+    # ### Begin command Std_Export
+    # __objs__ = []
+    # __objs__.append(FreeCAD.getDocument("SAMPLE_NACA_FILE").getObject("sample_naca_file_extrude"))
+    # import ImportGui
+    # if hasattr(ImportGui, "exportOptions"):
+    #     options = ImportGui.exportOptions(u"C:/Users/wobY/Downloads/temp/SAMPLE_NACA_FILE.step")
+    #     ImportGui.export(__objs__, u"C:/Users/wobY/Downloads/temp/SAMPLE_NACA_FILE.step", options)
+    # else:
+    #     ImportGui.export(__objs__, u"C:/Users/wobY/Downloads/temp/SAMPLE_NACA_FILE.step")
+    #
+    # del __objs__
+    # ### End command Std_Export
     document.saveAs(f"{cwd}/cad/{name}.FCStd")
     log.debug("Document saved as %s.FCStd", name)
 
