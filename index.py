@@ -4,6 +4,8 @@ import pandas as pd
 from utils.logging import get_logger  # pylint-disable: C0411
 
 # Setup the logger
+# usually you use __name__ here instead of "snpc"
+# but because this is a script, not a module, __name__ is __main__
 log = get_logger("snpc", "DEBUG")
 
 # Setup the FreeCAD import
