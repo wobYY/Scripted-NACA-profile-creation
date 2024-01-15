@@ -71,7 +71,7 @@ def get_logger(
             filepath = os.path.dirname(os.path.abspath(__file__))
             if not os.path.exists(os.path.join(filepath, "../logs")):
                 os.makedirs(os.path.join(filepath, "../logs"))
-            # Store logs in the logs directory of the grtb package
+            # Store logs in the parent directory
             logfile_name = f"../logs/logfile_{name}.log"
             LOGGER_CONFIG["handlers"]["logfile"]["filename"] = os.path.join(
                 filepath, logfile_name
