@@ -18,9 +18,9 @@ import os
 import logging
 import logging.config
 
-
 LOGGER_CONFIG = {
     "version": 1,
+    "disable_existing_loggers": False,
     "formatters": {
         "default": {
             "format": "{asctime:<23s} - {levelname:^7s} - {name} - {message}",
@@ -32,35 +32,39 @@ LOGGER_CONFIG = {
             "class": "logging.StreamHandler",
             "formatter": "default",
             "stream": "ext://sys.stdout",
+            "level": "INFO",
         },
         "logfile": {
             "class": "logging.FileHandler",
             "formatter": "default",
             "filename": "logfile.log",
+            "encoding": "utf-8",
+            "level": "DEBUG",
         },
     },
     "loggers": {
         "root": {
-            "handlers": ["stdout", "logfile"],
+            "handlers": ["logfile", "stdout"],
             "level": "DEBUG",
             "propagate": False,
+            "encoding": "utf-8",
         },
-        "stdout": {"handlers": ["stdout"], "level": "DEBUG", "propagate": True},
     },
 }
 
 
-def get_logger(name=None, level=None, centralised_logging=True):
+def get_logger(
+    name=__name__,
+    level: str = "INFO",
+    centralised_logging: bool = True,
+    ignore_other_loggers: bool = True,
+):
     """Create logger."""
     if name:
-        if name == "stdout":
-            del LOGGER_CONFIG["handlers"]["logfile"]
-            LOGGER_CONFIG["loggers"]["root"]["handlers"] = ["stdout"]
-
         if centralised_logging:
             # Store all logs in the centralised file
             LOGGER_CONFIG["handlers"]["logfile"]["filename"] = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "../logs.log"
+                os.path.dirname(os.path.abspath(__file__)), "../logfile.log"
             )
         else:
             # Check if logs directory exists, if not create it
@@ -68,14 +72,28 @@ def get_logger(name=None, level=None, centralised_logging=True):
             if not os.path.exists(os.path.join(filepath, "../logs")):
                 os.makedirs(os.path.join(filepath, "../logs"))
             # Store logs in the logs directory of the grtb package
-            logfile_name = f"../logs/logs_{name}.log"
+            logfile_name = f"../logs/logfile_{name}.log"
             LOGGER_CONFIG["handlers"]["logfile"]["filename"] = os.path.join(
                 filepath, logfile_name
             )
     if level:
-        LOGGER_CONFIG["loggers"]["root"]["level"] = level
+        # Set the level of the stdout handler
+        LOGGER_CONFIG["handlers"]["stdout"]["level"] = level
 
+    # Configure the logger
     logging.config.dictConfig(LOGGER_CONFIG)
+
+    # Get the logger
     logger = logging.getLogger(name)
 
+    # Ignore loggers from other packages
+    if ignore_other_loggers:
+        for log_name, log_obj in logging.Logger.manager.loggerDict.items():
+            # Replace the "snpc" with the name of your package if you're using this
+            # in your own package, otherwise set the name of the logger when you
+            # call get_logger() and set the if statement to that name
+            if "snpc" not in log_name:
+                log_obj.disabled = True
+
+    # Return the logger
     return logger
