@@ -1,12 +1,12 @@
 import os
 import sys
 import pandas as pd
-from utils.logging import get_logger  # pylint-disable: C0411
+from utils.logging import CustomLogger  # pylint-disable: C0411
 
 # Setup the logger
 # usually you use __name__ here instead of "snpc"
 # but because this is a script, not a module, __name__ is __main__
-log = get_logger("snpc", "DEBUG")
+log = CustomLogger().get_logger("snpc", "DEBUG")
 
 # Setup the FreeCAD import
 # It's possible to do both on Windows and Linux
@@ -293,9 +293,9 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     # Extrude the sketch
     log.info("Extruding the sketch")
     pad_name = f"{name.lower()}_extrude"
-    body.newObject(
-        "PartDesign::Pad", pad_name
-    ).Profile = sketch  # Base sketch is sketch
+    body.newObject("PartDesign::Pad", pad_name).Profile = (
+        sketch  # Base sketch is sketch
+    )
     document.getObject(pad_name).Length = kwargs.get(
         "extrude_length", 100
     )  # Extrude length is 100mm by default if not specified in kwargs
