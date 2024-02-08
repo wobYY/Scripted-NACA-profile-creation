@@ -1,7 +1,8 @@
 import os
 import sys
 import pandas as pd
-from utils.logging import get_logger  # pylint-disable: C0411
+import csv
+from utils.custom_logging import get_logger  # pylint-disable: C0411
 
 # Setup the logger
 log = get_logger("snpc", "DEBUG")
@@ -23,6 +24,99 @@ from FreeCAD import Base
 
 import PartDesign  # Import PartDesign after adding the Mod path
 import Sketcher  # Import Sketcher after adding the Mod path
+
+
+def _manual_user_input():
+    # Ask the user to enter the x and y coordinates for the profile
+    # The user can enter as many coordinates as they want
+    # The user can enter "done" to stop entering coordinates
+    # The user can enter "exit" to exit the program
+    # Write the coordinates to a csv writer object
+    log.info("Asking the user to enter the x and y coordinates for the profile")
+    print(
+        """INSTRUCTIONS:
+        - Enter the x and y coordinates for the profile
+        - Enter "done" to stop entering coordinates
+        - Enter "exit" to exit the program
+        """
+    )
+    manual_coordinates = []
+    while True:
+        number_of_coord = len(manual_coordinates) + 1
+        print(f"Enter the {number_of_coord}. coordinate:")
+        x = input(f" - Enter the {number_of_coord}. x coordinate: ")
+        if x.lower() == "exit":
+            log.info("User entered 'exit', exiting the program")
+            sys.exit()
+        elif x.lower() == "done":
+            log.info("User entered 'done', stopping the input")
+            break
+        y = input(f" - Enter the {number_of_coord}. y coordinate: ")
+        if y.lower() == "exit":
+            log.info("User entered 'exit', exiting the program")
+            sys.exit()
+        elif y.lower() == "done":
+            log.info("User entered 'done', stopping the input")
+            break
+        manual_coordinates.append({"x": float(x), "y": float(y)})
+
+    # Ask the user to enter the name of the profile
+    # If the user doesn't enter a name, just draw the profile without saving the coordinates
+    log.info("Asking the user to enter the name of the profile")
+    entered_filename = input("Enter the name of the profile (press enter to skip): ")
+    if entered_filename != "":
+        log.info(
+            "User entered the name of the profile, saving the coordinates to %s.csv",
+            entered_filename,
+        )
+        with open(f"profiles/{entered_filename}.csv", "w") as csv_file:
+            # Save the coordinates to a csv file
+            csv_writer = csv.DictWriter(csv_file, fieldnames=["x", "y"])
+            csv_writer.writeheader()
+            csv_writer.writerows(manual_coordinates)
+
+    # Create a Pandas dataframe from the coordinates dictionary
+    log.info("Creating a Pandas dataframe from the coordinates")
+    manual_coordinates = pd.DataFrame(manual_coordinates)
+
+    # Run the draw_from_csv_coordinates function with the coordinates
+    log.info("Drawing the profile from the coordinates provided")
+    draw_from_csv_coordinates(
+        entered_filename if entered_filename != "" else "manual_coordinates",
+        manual_coordinates,
+    )
+
+
+def _draw_profile(file):
+    log.debug("Drawing the profile from the coordinates provided in %s", file)
+    # Open the file
+    with open("profiles/" + file, "r") as f:
+        lines = f.readlines()
+
+    # If the file contains NACA in the first line remove the first line
+    log.debug("Checking if the first line contains NACA")
+    if "NACA" in lines[0]:
+        log.debug("First line contains NACA, removing the first line")
+        lines = lines[1:]
+
+    # Read the file as a dataframe
+    log.debug("Storing the file as a dataframe")
+    df = pd.DataFrame([line.split() for line in lines], columns=["x", "y"])
+
+    # Remove .txt from the filename
+    log.debug("Removing .txt from the filename")
+    filename = file[:-4]
+    log.debug("Filename: %s", filename)
+
+    # Draw the profile from the csv
+    log.info("Drawing the profile from coordinates provided in %s.csv", filename)
+    draw_from_csv_coordinates(filename, df)
+
+
+def _draw_all_profiles():
+    for file in os.listdir(cwd + "/profiles"):
+        if file.endswith(".txt"):
+            _draw_profile(file)
 
 
 def __coincident(sketch, f_line_id, f_edge_id, s_line_id, s_edge_id):
@@ -176,124 +270,156 @@ def draw_from_csv_coordinates(name, coordinates, **kwargs):
     document.recompute()
     log.debug("B-Spline drawn")
 
+    # If the first coordinates and last coordinates are different
     # Connect the first and last point with a straight line
-    log.debug("Connecting the first and last point with a straight line")
-    closing_line = Part.LineSegment(poles[0], poles[-1])
-    sketch.addGeometry(closing_line)
-    document.recompute()
+    if poles[0] != poles[-1]:
+        log.debug("Connecting the first and last point with a straight line")
+        closing_line = Part.LineSegment(poles[0], poles[-1])
+        sketch.addGeometry(closing_line)
+        document.recompute()
 
-    # Add constraints for the line
-    __coincident(sketch, __ll_id(sketch), 1, 0, 1)
-    __coincident(sketch, __ll_id(sketch), 2, number_of_coord - 1, 1)
-    document.recompute()
-    log.debug("Profile closed with a straight line")
+        # Add constraints for the line
+        __coincident(sketch, __ll_id(sketch), 1, 0, 1)
+        __coincident(sketch, __ll_id(sketch), 2, number_of_coord - 1, 1)
+        document.recompute()
+        log.debug("Profile closed with a straight line")
 
     # Creating the domain around the profile
-    log.info("Profile created, creating the domain around the profile")
+    log.info("Profile created, asking user if they want the domain around the profile")
 
-    # Get the minimum and maximum x and y coordinates
-    log.debug("Getting the minimum and maximum x and y coordinates")
-    min_x = coordinates["x"].min()
-    max_x = coordinates["x"].max()
-    min_y = coordinates["y"].min()
-    max_y = coordinates["y"].max()
-    log.debug("Minimum x: %s | Maximum x: %s", f"{min_x:<6}", f"{max_x:<6}")
-    log.debug("Minimum y: %s | Maximum y: %s", f"{min_y:<6}", f"{max_y:<6}")
+    # Ask the user if they want the domain around the profile
+    if input("Do you want the domain around the profile? (y/n): ").lower() == "y":
+        # Get the minimum and maximum x and y coordinates
+        log.debug("Getting the minimum and maximum x and y coordinates")
+        min_x = coordinates["x"].min()
+        max_x = coordinates["x"].max()
+        min_y = coordinates["y"].min()
+        max_y = coordinates["y"].max()
+        log.debug("Minimum x: %s | Maximum x: %s", f"{min_x:<6}", f"{max_x:<6}")
+        log.debug("Minimum y: %s | Maximum y: %s", f"{min_y:<6}", f"{max_y:<6}")
 
-    # Calculating the length of the profile
-    log.debug("Calculating the length of the profile")
-    length = max_x - min_x
+        # Calculating the length of the profile
+        log.debug("Calculating the length of the profile")
+        length = max_x - min_x
 
-    # Calculating the dimensions for the domain
-    log.debug("Calculating the dimensions for the domain")
-    x_front = min_x - (length * 3)  # 3x the profile length for the flow to develop
-    x_back = max_x + (length * 7)  # 7x the profile length
-    y_above = max_y + (length * 3)  # 3x the profile length
-    y_below = min_y - (length * 3)  # 3x the profile length
+        # Calculating the dimensions for the domain
+        log.debug("Calculating the dimensions for the domain")
+        x_front = min_x - (length * 3)  # 3x the profile length for the flow to develop
+        x_back = max_x + (length * 7)  # 7x the profile length
+        y_above = max_y + (length * 3)  # 3x the profile length
+        y_below = min_y - (length * 3)  # 3x the profile length
 
-    # Draw the domain
-    # According to the Constraint documentation
-    # Docs: https://wiki.freecad.org/Sketcher_scripting
-    # To constrain these lines you need to use
-    # ...er.Constraint("Coincient", first_line_id, edge_id, second_line_id, edge_id)
-    # Where edge ID is 0 for starting edge, 1 for ending and 2 for middle of the line
-    log.info("Drawing the domain")
-    # Drawing the top line
-    log.debug("Drawing the top line of the domain")
-    sketch.addGeometry(Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0)))
-
-    # Constrain the line to be horizontal
-    log.debug("Constraining line: %s", sketch.Geometry[-1])
-    sketch.addConstraint(Sketcher.Constraint("Horizontal", __ll_id(sketch)))
-
-    # Adding distances from origin to the line
-    sketch.addConstraint(
-        Sketcher.Constraint(
-            "DistanceX", -1, 1, __ll_id(sketch), 1, App.Units.Quantity(f"{x_front} mm")
+        # Draw the domain
+        # According to the Constraint documentation
+        # Docs: https://wiki.freecad.org/Sketcher_scripting
+        # To constrain these lines you need to use
+        # ...er.Constraint("Coincient", first_line_id, edge_id, second_line_id, edge_id)
+        # Where edge ID is 0 for starting edge, 1 for ending and 2 for middle of the line
+        log.info("Drawing the domain")
+        # Drawing the top line
+        log.debug("Drawing the top line of the domain")
+        sketch.addGeometry(
+            Part.LineSegment(V(x_front, y_above, 0), V(x_back, y_above, 0))
         )
-    )
-    sketch.addConstraint(
-        Sketcher.Constraint(
-            "DistanceX", -1, 1, __ll_id(sketch), 2, App.Units.Quantity(f"{x_back} mm")
+
+        # Constrain the line to be horizontal
+        log.debug("Constraining line: %s", sketch.Geometry[-1])
+        sketch.addConstraint(Sketcher.Constraint("Horizontal", __ll_id(sketch)))
+
+        # Adding distances from origin to the line
+        sketch.addConstraint(
+            Sketcher.Constraint(
+                "DistanceX",
+                -1,
+                1,
+                __ll_id(sketch),
+                1,
+                App.Units.Quantity(f"{x_front} mm"),
+            )
         )
-    )
-    sketch.addConstraint(
-        Sketcher.Constraint(
-            "DistanceY", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{y_above} mm")
+        sketch.addConstraint(
+            Sketcher.Constraint(
+                "DistanceX",
+                -1,
+                1,
+                __ll_id(sketch),
+                2,
+                App.Units.Quantity(f"{x_back} mm"),
+            )
         )
-    )
-
-    # Drawing the right line
-    log.debug("Drawing the right line of the domain")
-    sketch.addGeometry(Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0)))
-
-    # Constrain the line to be vertical
-    log.debug("Constraining line: %s", sketch.Geometry[-1])
-    sketch.addConstraint(Sketcher.Constraint("Vertical", __ll_id(sketch)))
-
-    # Constrain the last edge of 1st line with the first edge of the 2nd line
-    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
-
-    # Drawing the bottom line
-    log.debug("Drawing the bottom line of the domain")
-    sketch.addGeometry(Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0)))
-
-    # Constrain the line to be horizontal
-    log.debug("Constraining line: %s", sketch.Geometry[-1])
-    sketch.addConstraint(Sketcher.Constraint("Horizontal", __ll_id(sketch)))
-
-    # Adding distances from origin to the line
-    sketch.addConstraint(
-        Sketcher.Constraint(
-            "DistanceY", __ll_id(sketch), 1, -1, 1, App.Units.Quantity(f"{y_below} mm")
+        sketch.addConstraint(
+            Sketcher.Constraint(
+                "DistanceY",
+                __ll_id(sketch),
+                1,
+                -1,
+                1,
+                App.Units.Quantity(f"{y_above} mm"),
+            )
         )
-    )
 
-    # Constrain the last edge of 2nd line with the first edge of the 3rd line
-    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+        # Drawing the right line
+        log.debug("Drawing the right line of the domain")
+        sketch.addGeometry(
+            Part.LineSegment(V(x_back, y_above, 0), V(x_back, y_below, 0))
+        )
 
-    # Drawing the left line
-    log.debug("Drawing the left line of the domain")
-    sketch.addGeometry(Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0)))
+        # Constrain the line to be vertical
+        log.debug("Constraining line: %s", sketch.Geometry[-1])
+        sketch.addConstraint(Sketcher.Constraint("Vertical", __ll_id(sketch)))
 
-    # Constrain the line to be vertical
-    log.debug("Constraining line: %s", sketch.Geometry[-1])
-    sketch.addConstraint(Sketcher.Constraint("Vertical", __ll_id(sketch)))
+        # Constrain the last edge of 1st line with the first edge of the 2nd line
+        __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
 
-    # Constrain the last edge of the 3rd line with the first edge of the 4th line
-    __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+        # Drawing the bottom line
+        log.debug("Drawing the bottom line of the domain")
+        sketch.addGeometry(
+            Part.LineSegment(V(x_back, y_below, 0), V(x_front, y_below, 0))
+        )
 
-    # Constrain the last edge of the 4th line with the first edge of the 1st line
-    __coincident(sketch, __ll_id(sketch) - 3, 1, __ll_id(sketch), 2)
-    document.recompute()
-    log.info("Domain created, profile ready to be extruded")
+        # Constrain the line to be horizontal
+        log.debug("Constraining line: %s", sketch.Geometry[-1])
+        sketch.addConstraint(Sketcher.Constraint("Horizontal", __ll_id(sketch)))
+
+        # Adding distances from origin to the line
+        sketch.addConstraint(
+            Sketcher.Constraint(
+                "DistanceY",
+                __ll_id(sketch),
+                1,
+                -1,
+                1,
+                App.Units.Quantity(f"{y_below} mm"),
+            )
+        )
+
+        # Constrain the last edge of 2nd line with the first edge of the 3rd line
+        __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+
+        # Drawing the left line
+        log.debug("Drawing the left line of the domain")
+        sketch.addGeometry(
+            Part.LineSegment(V(x_front, y_below, 0), V(x_front, y_above, 0))
+        )
+
+        # Constrain the line to be vertical
+        log.debug("Constraining line: %s", sketch.Geometry[-1])
+        sketch.addConstraint(Sketcher.Constraint("Vertical", __ll_id(sketch)))
+
+        # Constrain the last edge of the 3rd line with the first edge of the 4th line
+        __coincident(sketch, __ll_id(sketch) - 1, 2, __ll_id(sketch), 1)
+
+        # Constrain the last edge of the 4th line with the first edge of the 1st line
+        __coincident(sketch, __ll_id(sketch) - 3, 1, __ll_id(sketch), 2)
+        document.recompute()
+        log.info("Domain created, profile ready to be extruded")
 
     # Extrude the sketch
     log.info("Extruding the sketch")
     pad_name = f"{name.lower()}_extrude"
-    body.newObject(
-        "PartDesign::Pad", pad_name
-    ).Profile = sketch  # Base sketch is sketch
+    body.newObject("PartDesign::Pad", pad_name).Profile = (
+        sketch  # Base sketch is sketch
+    )
     document.getObject(pad_name).Length = kwargs.get(
         "extrude_length", 100
     )  # Extrude length is 100mm by default if not specified in kwargs
@@ -323,39 +449,33 @@ cwd = os.getcwd()
 
 def process_all_profiles_in_parent_dir():
     log.info("Checking for all text files in the /profiles folder")
-    for file in os.listdir(cwd + "/profiles"):
+    profiles_in_folder = os.listdir(cwd + "/profiles")
+
+    # For each file in the /profiles folder create a string which will be printed to the user
+    # in the input selection prompt in the format "i. profile_name" where i is the selection number
+    # starting at 3 because 1 and 2 will be reserved for the "All profiles" and "Manual input" options
+    profile_selection_string = []
+    for i, file in enumerate(profiles_in_folder, start=3):
         if file.endswith(".txt"):
-            log.debug("Found a .txt file (%s), converting to .csv", file)
+            profile_selection_string.append(
+                f"""{i}. {file}\n        """
+            )  # Spaces are important for formatting
+    selection_string = int(
+        input(
+            f"""Please select the profile you want to draw:
+        1. All profiles
+        2. Manual input
+        {''.join(profile_selection_string)}
+    """
+        )
+    )
 
-            # Open the file
-            with open("profiles/" + file, "r") as f:
-                lines = f.readlines()
-
-            # If the file contains NACA in the first line remove the first line
-            log.debug("Checking if the first line contains NACA")
-            if "NACA" in lines[0]:
-                log.debug("First line contains NACA, removing the first line")
-                lines = lines[1:]
-
-            # Read the file as a dataframe
-            log.debug("Storing the file as a dataframe")
-            df = pd.DataFrame([line.split() for line in lines], columns=["x", "y"])
-
-            # Remove .txt from the filename
-            log.debug("Removing .txt from the filename")
-            filename = file[:-4]
-            log.debug("Filename: %s", filename)
-
-            # Save the file as a csv
-            log.debug("Saving the processed file as a csv")
-            df.to_csv(f"profiles/{filename}.csv", index=False, header=False)
-            log.info("Saved %s as a csv", filename)
-
-            # Draw the profile from the csv
-            log.info(
-                "Drawing the profile from coordinates provided in %s.csv", filename
-            )
-            draw_from_csv_coordinates(filename, df)
+    if selection_string == 1:
+        _draw_all_profiles()
+    elif selection_string == 2:
+        _manual_user_input()
+    else:
+        _draw_profile(profiles_in_folder[selection_string - 3])
 
 
 if __name__ == "__main__":
