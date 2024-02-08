@@ -6,14 +6,16 @@
   "image": "mcr.microsoft.com/devcontainers/python:1-3.12",
 
   // Features to add to the dev container. More info: https://containers.dev/features.
-  // "features": {},
+  "features": {
+		"ghcr.io/devcontainers-community/npm-features/prettier:1": {}
+	},
 
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
   // "forwardPorts": [],
 
   // Use 'postCreateCommand' to run commands after the container is created.
   // "postCreateCommand": "pip3 install --user -r requirements.txt",
-  "postAttachCommand": "pip install --upgrade pip && pip install -r requirements.txt && sudo add-apt-repository ppa:freecad-maintainers/freecad-stable -y sudo apt-get update && sudo apt-get install freecad -y"
+  "postAttachCommand": "sudo apt-get update && pip install --upgrade pip && pip install -r requirements.txt && sudo apt -y install python3-launchpadlib && sudo apt update && sudo apt-get update && sudo apt-get install freecad"
 
   // Configure tool-specific properties.
   // "customizations": {},
